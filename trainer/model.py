@@ -48,6 +48,10 @@ def decoder(features, layers, kernel_initializer, kernel_regularizer):
 
     return logits
 
+def add_noise(image, noise_factor):
+    noise = noise_factor * tf.random_uniform(image.shape)
+    return tf.clip_by_value(tf.add(image, noise), 0.0, 1.0)
+
 def model_fn(features, labels, mode, params):
     kernel_initializer = tf.variance_scaling_initializer()
     kernel_regularizer = tf.contrib.layers.l2_regularizer(params["weight_decay"])
@@ -58,7 +62,12 @@ def model_fn(features, labels, mode, params):
     features = tf.reshape(features, [-1, 28 * 28])
     features = tf.cast(features, tf.float32) / 255.0
 
-    embeddings = encoder(features, params["layers"], kernel_initializer, kernel_regularizer)
+    if params["noise_factor"] > 0:
+        images = tf.map_fn(lambda x: add_noise(x, params["noise_factor"]), features, back_prop=False)
+    else:
+        images = features
+
+    embeddings = encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
     logits = decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
 
     if mode == tf.estimator.ModeKeys.PREDICT:

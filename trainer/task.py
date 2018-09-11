@@ -12,6 +12,7 @@ def run(
     layers,
     learning_rate,
     weight_decay,
+    noise_factor,
     job_dir,
 ):
     config = tf.estimator.RunConfig(
@@ -26,6 +27,7 @@ def run(
             "layers": layers,
             "weight_decay": weight_decay,
             "learning_rate": learning_rate,
+            "noise_factor": noise_factor,
         },
     )
 
@@ -44,7 +46,7 @@ def run(
         shuffle=False,
     )
 
-    train_spec = tf.estimator.TrainSpec(train_input_fn, max_steps=5000)
+    train_spec = tf.estimator.TrainSpec(train_input_fn, max_steps=max_steps)
 
     serving_input_receiver_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
         "image": tf.placeholder(tf.uint8, [None, 28, 28]),
@@ -53,6 +55,13 @@ def run(
     eval_spec = tf.estimator.EvalSpec(eval_input_fn, throttle_secs=30, exporters=[ exporter ])
 
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+
+# https://stackoverflow.com/a/12117065/3673043
+def restricted_float(x):
+    x = float(x)
+    if x < 0.0 or x >= 1.0:
+        raise argparse.ArgumentTypeError("%s not in range [0.0, 1.0)" % x)
+    return x
 
 def main():
     parser = argparse.ArgumentParser()
@@ -91,6 +100,13 @@ def main():
         help="""L2 regularizer weight decay""",
         default=1e-5,
         type=float
+    )
+
+    parser.add_argument(
+        '--noise-factor',
+        help="""noise factor to corrupt the input with""",
+        default=0.0,
+        type=restricted_float,
     )
 
     parser.add_argument(
