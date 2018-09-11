@@ -1,18 +1,9 @@
 import tensorflow as tf
 
-def model_fn(features, labels, mode, params):
-    kernel_initializer = tf.variance_scaling_initializer()
-    kernel_regularizer = tf.contrib.layers.l2_regularizer(params["weight_decay"])
-
-    if isinstance(features, dict):
-        features = features["image"]
-
-    features = tf.reshape(features, [-1, 28 * 28])
-    features = tf.cast(features, tf.float32) / 255.0
-
+def encoder(features, layers, kernel_initializer, kernel_regularizer):
     layer = features
 
-    for (i, l) in enumerate(params["layers"][:-1]):
+    for (i, l) in enumerate(layers[:-1]):
         layer = tf.layers.dense(
             layer,
             l,
@@ -22,16 +13,21 @@ def model_fn(features, labels, mode, params):
             name="encoder_%d" % (i + 1),
         )
 
-    layer = tf.layers.dense(
+    embedding = tf.layers.dense(
         layer,
-        params["layers"][-1],
+        layers[-1],
         activation=tf.nn.elu,
         kernel_initializer=kernel_initializer,
         kernel_regularizer=kernel_regularizer,
         name="embedding",
     )
 
-    for (i, l) in enumerate(reversed(params["layers"][:-1])):
+    return embedding
+
+def decoder(features, layers, kernel_initializer, kernel_regularizer):
+    layer = features
+
+    for (i, l) in enumerate(reversed(layers[:-1])):
         layer = tf.layers.dense(
             layer,
             l,
@@ -50,9 +46,24 @@ def model_fn(features, labels, mode, params):
         name="logits",
     )
 
+    return logits
+
+def model_fn(features, labels, mode, params):
+    kernel_initializer = tf.variance_scaling_initializer()
+    kernel_regularizer = tf.contrib.layers.l2_regularizer(params["weight_decay"])
+
+    if isinstance(features, dict):
+        features = features["image"]
+
+    features = tf.reshape(features, [-1, 28 * 28])
+    features = tf.cast(features, tf.float32) / 255.0
+
+    embedding = encoder(features, params["layers"], kernel_initializer, kernel_regularizer)
+    logits = decoder(embedding, params["layers"], kernel_initializer, kernel_regularizer)
+
     if mode == tf.estimator.ModeKeys.PREDICT:
-        probs = tf.nn.sigmoid(logits)
-        predictions = { "prediction": probs }
+        outputs = tf.nn.sigmoid(logits, name="outputs")
+        predictions = { "prediction": outputs }
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
