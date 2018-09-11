@@ -28,6 +28,7 @@ def run(
             "weight_decay": weight_decay,
             "learning_rate": learning_rate,
             "noise_factor": noise_factor,
+            "job_dir": job_dir,
         },
     )
 
