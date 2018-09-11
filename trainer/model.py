@@ -58,12 +58,12 @@ def model_fn(features, labels, mode, params):
     features = tf.reshape(features, [-1, 28 * 28])
     features = tf.cast(features, tf.float32) / 255.0
 
-    embedding = encoder(features, params["layers"], kernel_initializer, kernel_regularizer)
-    logits = decoder(embedding, params["layers"], kernel_initializer, kernel_regularizer)
+    embeddings = encoder(features, params["layers"], kernel_initializer, kernel_regularizer)
+    logits = decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         outputs = tf.nn.sigmoid(logits, name="outputs")
-        predictions = { "prediction": outputs }
+        predictions = { "predictions": outputs, "embeddings": embeddings }
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
