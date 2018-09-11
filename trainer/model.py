@@ -67,7 +67,7 @@ def model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(
             mode=mode,
             predictions=predictions,
-            export_outputs={ "predict": tf.estimator.export.PredictOutput(predictions) },
+            export_outputs={ "serving_default": tf.estimator.export.PredictOutput(predictions) },
         )
 
     loss = tf.losses.sigmoid_cross_entropy(features, logits)
