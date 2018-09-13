@@ -9,12 +9,22 @@ from model import model_fn
 def run(
     max_steps,
     batch_size,
-    layers,
+    linear,
     learning_rate,
     weight_decay,
     noise_factor,
+    eval_interval,
     job_dir,
 ):
+    if linear:
+        layers = [512, 128, 32]
+    else:
+        layers = [
+            (16, (3, 3), (2, 2)),
+            (8, (3, 3), (2, 2)),
+            (8, (3, 3), (2, 2)),
+        ]
+
     config = tf.estimator.RunConfig(
         model_dir=job_dir,
         save_checkpoints_steps=500,
@@ -25,6 +35,7 @@ def run(
         config=config,
         params={
             "layers": layers,
+            "linear": linear,
             "weight_decay": weight_decay,
             "learning_rate": learning_rate,
             "noise_factor": noise_factor,
@@ -53,7 +64,7 @@ def run(
         "image": tf.placeholder(tf.uint8, [None, 28, 28]),
     })
     exporter = tf.estimator.LatestExporter("model", serving_input_receiver_fn)
-    eval_spec = tf.estimator.EvalSpec(eval_input_fn, throttle_secs=30, exporters=[ exporter ])
+    eval_spec = tf.estimator.EvalSpec(eval_input_fn, throttle_secs=eval_interval, exporters=[ exporter ])
 
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
@@ -77,16 +88,15 @@ def main():
     parser.add_argument(
         '--max-steps',
         help="""Maximum number of steps""",
-        default=5000,
+        default=10000,
         type=int
     )
 
     parser.add_argument(
-        '--layers',
-        help="""Sizes of encoding layers""",
-        nargs="+",
-        default=[512, 128, 32],
-        type=int
+        '--linear',
+        help="""Build Linear Model instead of Conv Model""",
+        dest="linear",
+        action="store_true"
     )
 
     parser.add_argument(
@@ -108,6 +118,13 @@ def main():
         help="""noise factor to corrupt the input with""",
         default=0.0,
         type=restricted_float,
+    )
+
+    parser.add_argument(
+        '--eval-interval',
+        help="""intervals at which to eval and save""",
+        default=60,
+        type=int,
     )
 
     parser.add_argument(

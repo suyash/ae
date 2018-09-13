@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def encoder(features, layers, kernel_initializer, kernel_regularizer):
+def linear_encoder(features, layers, kernel_initializer, kernel_regularizer):
     layer = features
 
     for (i, l) in enumerate(layers[:-1]):
@@ -24,7 +24,7 @@ def encoder(features, layers, kernel_initializer, kernel_regularizer):
 
     return embedding
 
-def decoder(features, layers, kernel_initializer, kernel_regularizer):
+def linear_decoder(features, layers, kernel_initializer, kernel_regularizer):
     layer = features
 
     for (i, l) in enumerate(reversed(layers[:-1])):
@@ -48,6 +48,27 @@ def decoder(features, layers, kernel_initializer, kernel_regularizer):
 
     return logits
 
+def conv_encoder(features, layers, kernel_initializer, kernel_regularizer):
+    layer = features
+
+    for (i, (filters, kernel_size, pool_size)) in enumerate(layers[:-1]):
+        layer = tf.layers.conv2d(layer, filters, kernel_size, activation="relu", padding="same", name="encoder_%d" % (i + 1))
+        layer = tf.layers.max_pooling2d(layer, pool_size, strides=pool_size, padding="same", name="encoder_%d_pool" % (i + 1))
+
+    embedding = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation="relu", padding="same", name="embedding")
+    embedding = tf.layers.max_pooling2d(embedding, layers[-1][2], strides=layers[-1][2], padding="same", name="embedding_pool")
+    return embedding
+
+def conv_decoder(features, layers, kernel_initializer, kernel_regularizer):
+    layer = features
+
+    for (i, (filters, kernel_size, pool_size)) in enumerate(reversed(layers)):
+        layer = tf.layers.conv2d_transpose(layer, filters, kernel_size, strides=pool_size, activation="relu", padding="same", name="decoder_%d" % (i + 1))
+
+    logits = tf.layers.conv2d_transpose(layer, 1, (3, 3), activation=None, padding="same", name="logits")
+    logits = logits[:, 2:30, 2:30, :]
+    return logits
+
 def add_noise(image, noise_factor):
     noise = noise_factor * tf.random_uniform(image.shape)
     return tf.clip_by_value(tf.add(image, noise), 0.0, 1.0)
@@ -61,7 +82,11 @@ def model_fn(features, labels, mode, params):
 
     tf.summary.image("input", tf.reshape(features, [-1, 28, 28, 1]), max_outputs=10)
 
-    features = tf.reshape(features, [-1, 28 * 28])
+    if params["linear"]:
+        features = tf.reshape(features, [-1, 28 * 28])
+    else:
+        features = tf.reshape(features, [-1, 28, 28, 1])
+
     features = tf.cast(features, tf.float32) / 255.0
 
     if params["noise_factor"] > 0:
@@ -69,8 +94,12 @@ def model_fn(features, labels, mode, params):
     else:
         images = features
 
-    embeddings = encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
-    logits = decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
+    if params["linear"]:
+        embeddings = linear_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
+        logits = linear_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
+    else:
+        embeddings = conv_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
+        logits = conv_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
 
     outputs = tf.nn.sigmoid(logits, name="outputs")
     tf.summary.image("output", tf.reshape(outputs, [-1, 28, 28, 1]), max_outputs=10)
