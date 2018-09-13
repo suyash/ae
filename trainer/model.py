@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def linear_encoder(features, layers, kernel_initializer, kernel_regularizer):
+def linear_encoder(features, layers, kernel_initializer, kernel_regularizer, variational=False):
     layer = features
 
     for (i, l) in enumerate(layers[:-1]):
@@ -12,6 +12,15 @@ def linear_encoder(features, layers, kernel_initializer, kernel_regularizer):
             kernel_regularizer=kernel_regularizer,
             name="encoder_%d" % (i + 1),
         )
+
+    if variational:
+        embedding_mean = tf.layers.dense(layer, layers[-1], activation=None, kernel_initializer=kernel_initializer, name="embedding_mean")
+        embedding_gamma = tf.layers.dense(layer, layers[-1], activation=None, kernel_initializer=kernel_initializer, name="embedding_gamma")
+
+        noise = tf.random_normal(tf.shape(embedding_gamma), dtype=tf.float32)
+
+        embedding = embedding_mean + tf.exp(0.5 * embedding_gamma) * noise
+        return embedding_mean, embedding_gamma, embedding
 
     embedding = tf.layers.dense(
         layer,
@@ -48,7 +57,7 @@ def linear_decoder(features, layers, kernel_initializer, kernel_regularizer):
 
     return logits
 
-def conv_encoder(features, layers, kernel_initializer, kernel_regularizer):
+def conv_encoder(features, layers, kernel_initializer, kernel_regularizer, variational=False):
     layer = features
 
     for (i, (filters, kernel_size, pool_size)) in enumerate(layers[:-1]):
@@ -95,11 +104,19 @@ def model_fn(features, labels, mode, params):
         images = features
 
     if params["linear"]:
-        embeddings = linear_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
-        logits = linear_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
+        if params["variational"]:
+            embeddings_mean, embeddings_gamma, embeddings = linear_encoder(images, params["layers"], kernel_initializer, None, True)
+            logits = linear_decoder(embeddings, params["layers"], kernel_initializer, None)
+        else:
+            embeddings = linear_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
+            logits = linear_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
     else:
-        embeddings = conv_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
-        logits = conv_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
+        if params["variational"]:
+            embeddings_mean, embeddings_gamma, embeddings = conv_encoder(images, params["layers"], kernel_initializer, None, True)
+            logits = conv_decoder(embeddings, params["layers"], kernel_initializer, None)
+        else:
+            embeddings = conv_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
+            logits = conv_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
 
     outputs = tf.nn.sigmoid(logits, name="outputs")
     tf.summary.image("output", tf.reshape(outputs, [-1, 28, 28, 1]), max_outputs=10)
@@ -112,7 +129,10 @@ def model_fn(features, labels, mode, params):
             export_outputs={ "serving_default": tf.estimator.export.PredictOutput(predictions) },
         )
 
-    loss = tf.losses.sigmoid_cross_entropy(features, logits)
+    if params["variational"]:
+        loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=features, logits=logits))
+    else:
+        loss = tf.losses.sigmoid_cross_entropy(features, logits)
 
     if mode == tf.estimator.ModeKeys.EVAL:
         summary_hook = tf.train.SummarySaverHook(
@@ -122,7 +142,12 @@ def model_fn(features, labels, mode, params):
         )
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, evaluation_hooks=[ summary_hook ])
 
-    loss = tf.losses.get_total_loss()
+    if params["variational"]:
+        latent_loss = 0.5 * tf.reduce_sum(tf.exp(embeddings_gamma) + tf.square(embeddings_mean) - 1 - embeddings_gamma)
+        loss += latent_loss
+    else:
+        loss = tf.losses.get_total_loss()
+
     optimizer = tf.train.AdamOptimizer(params["learning_rate"])
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 

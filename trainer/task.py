@@ -10,6 +10,7 @@ def run(
     max_steps,
     batch_size,
     linear,
+    variational,
     learning_rate,
     weight_decay,
     noise_factor,
@@ -36,6 +37,7 @@ def run(
         params={
             "layers": layers,
             "linear": linear,
+            "variational": variational,
             "weight_decay": weight_decay,
             "learning_rate": learning_rate,
             "noise_factor": noise_factor,
@@ -94,8 +96,15 @@ def main():
 
     parser.add_argument(
         '--linear',
-        help="""Build Linear Model instead of Conv Model""",
+        help="""Build a Linear Model""",
         dest="linear",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        '--variational',
+        help="""Build a Variational Model""",
+        dest="variational",
         action="store_true"
     )
 
