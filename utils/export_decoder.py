@@ -8,7 +8,9 @@ import argparse
 
 import tensorflow as tf
 
-def run(model_dir, layers):
+def run(model_dir):
+    layers = [ 512, 128, 32 ]
+
     decoder = []
 
     with tf.Session(graph=tf.Graph()) as sess:
@@ -68,13 +70,6 @@ def main():
     parser.add_argument(
         "--model-dir",
         type=str,
-        required=True,
-    )
-
-    parser.add_argument(
-        "--layers",
-        type=int,
-        nargs="+",
         required=True,
     )
 
