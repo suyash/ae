@@ -57,24 +57,31 @@ def linear_decoder(features, layers, kernel_initializer, kernel_regularizer):
 
     return logits
 
-def conv_encoder(features, layers, kernel_initializer, kernel_regularizer, variational=False):
+def conv_encoder(features, layers, mode, variational=False):
     layer = features
 
     for (i, (filters, kernel_size, pool_size)) in enumerate(layers[:-1]):
-        layer = tf.layers.conv2d(layer, filters, kernel_size, activation="relu", padding="same", name="encoder_%d" % (i + 1))
+        layer = tf.layers.conv2d(layer, filters, kernel_size, activation=None, padding="same", name="encoder_%d" % (i + 1))
+        layer = tf.layers.batch_normalization(layer, training=(mode == tf.estimator.ModeKeys.TRAIN))
+        layer = tf.nn.relu(layer)
         layer = tf.layers.max_pooling2d(layer, pool_size, strides=pool_size, padding="same", name="encoder_%d_pool" % (i + 1))
 
-    embedding = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation="relu", padding="same", name="embedding")
+    embedding = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation=None, padding="same", name="embedding")
+    embedding = tf.layers.batch_normalization(embedding, training=(mode == tf.estimator.ModeKeys.TRAIN))
+    embedding = tf.nn.relu(embedding)
     embedding = tf.layers.max_pooling2d(embedding, layers[-1][2], strides=layers[-1][2], padding="same", name="embedding_pool")
     return embedding
 
-def conv_decoder(features, layers, kernel_initializer, kernel_regularizer):
+def conv_decoder(features, layers, mode):
     layer = features
 
     for (i, (filters, kernel_size, pool_size)) in enumerate(reversed(layers)):
-        layer = tf.layers.conv2d_transpose(layer, filters, kernel_size, strides=pool_size, activation="relu", padding="same", name="decoder_%d" % (i + 1))
+        layer = tf.layers.conv2d_transpose(layer, filters, kernel_size, strides=pool_size, activation=None, padding="same", name="decoder_%d" % (i + 1))
+        layer = tf.layers.batch_normalization(layer, training=(mode == tf.estimator.ModeKeys.TRAIN))
+        layer = tf.nn.relu(layer)
 
     logits = tf.layers.conv2d_transpose(layer, 1, (3, 3), activation=None, padding="same", name="logits")
+    logits = tf.layers.batch_normalization(logits, training=(mode == tf.estimator.ModeKeys.TRAIN))
     logits = logits[:, 2:30, 2:30, :]
     return logits
 
@@ -112,11 +119,11 @@ def model_fn(features, labels, mode, params):
             logits = linear_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
     else:
         if params["variational"]:
-            embeddings_mean, embeddings_gamma, embeddings = conv_encoder(images, params["layers"], kernel_initializer, None, True)
-            logits = conv_decoder(embeddings, params["layers"], kernel_initializer, None)
+            embeddings_mean, embeddings_gamma, embeddings = conv_encoder(images, params["layers"], mode, True)
+            logits = conv_decoder(embeddings, params["layers"], mode)
         else:
-            embeddings = conv_encoder(images, params["layers"], kernel_initializer, kernel_regularizer)
-            logits = conv_decoder(embeddings, params["layers"], kernel_initializer, kernel_regularizer)
+            embeddings = conv_encoder(images, params["layers"], mode)
+            logits = conv_decoder(embeddings, params["layers"], mode)
 
     outputs = tf.nn.sigmoid(logits, name="outputs")
     tf.summary.image("output", tf.reshape(outputs, [-1, 28, 28, 1]), max_outputs=10)
