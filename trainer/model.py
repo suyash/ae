@@ -66,6 +66,20 @@ def conv_encoder(features, layers, mode, variational=False):
         layer = tf.nn.relu(layer)
         layer = tf.layers.max_pooling2d(layer, pool_size, strides=pool_size, padding="same", name="encoder_%d_pool" % (i + 1))
 
+    if variational:
+        embedding_mean = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation=None, padding="same", name="embedding_mean")
+        embedding_mean = tf.layers.batch_normalization(embedding_mean, training=(mode == tf.estimator.ModeKeys.TRAIN))
+        embedding_mean = tf.layers.max_pooling2d(embedding_mean, layers[-1][2], strides=layers[-1][2], padding="same")
+
+        embedding_gamma = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation=None, padding="same", name="embedding_gamma")
+        embedding_gamma = tf.layers.batch_normalization(embedding_gamma, training=(mode == tf.estimator.ModeKeys.TRAIN))
+        embedding_gamma = tf.layers.max_pooling2d(embedding_gamma, layers[-1][2], strides=layers[-1][2], padding="same")
+
+        noise = tf.random_normal(tf.shape(embedding_gamma), dtype=tf.float32)
+
+        embedding = embedding_mean + tf.exp(0.5 * embedding_gamma) * noise
+        return embedding_mean, embedding_gamma, embedding
+
     embedding = tf.layers.conv2d(layer, layers[-1][0], layers[-1][1], activation=None, padding="same", name="embedding")
     embedding = tf.layers.batch_normalization(embedding, training=(mode == tf.estimator.ModeKeys.TRAIN))
     embedding = tf.nn.relu(embedding)
