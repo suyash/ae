@@ -134,7 +134,7 @@ def train(latent_dim, batch_size, epochs):
 
         loss = tf.keras.metrics.Mean()
         for test_x in test_dataset:
-            loss = compute_loss(test_x)
+            loss(compute_loss(test_x))
         elbo = -loss.result()
         print("Epoch %d, Test ELBO: %f" % (epoch, elbo))
 
