@@ -14,6 +14,7 @@ import tensorflow_datasets as tfds
 app.flags.DEFINE_integer("latent_dim", 64, "latent dimension")
 app.flags.DEFINE_integer("batch_size", 100, "batch size")
 app.flags.DEFINE_integer("epochs", 50, "epochs")
+app.flags.DEFINE_string("model_dir", "models/cvae", "model dir")
 
 
 class InferenceNet(Model):
@@ -76,74 +77,82 @@ def process_dataset(dataset, batch_size):
     return dataset
 
 
-def train(latent_dim, batch_size, epochs):
+def train(latent_dim, batch_size, epochs, model_dir):
     """
     NOTE: from https://www.tensorflow.org/alpha/guide/keras/saving_and_serializing, 
     saving a imperative model is not recommended on 2.0. For creating a saved_model, "non-subclassing" branch.
     """
-    train_dataset, test_dataset = tfds.load(
-        "mnist", split=[tfds.Split.TRAIN, tfds.Split.TEST])
 
-    train_dataset = process_dataset(train_dataset, batch_size)
-    test_dataset = process_dataset(test_dataset, batch_size)
+    with tf.summary.create_file_writer(model_dir).as_default():
+        train_dataset, test_dataset = tfds.load(
+            "mnist", split=[tfds.Split.TRAIN, tfds.Split.TEST])
 
-    encoder = InferenceNet(latent_dim)
-    decoder = GenerativeNet(latent_dim)
+        train_dataset = process_dataset(train_dataset, batch_size)
+        test_dataset = process_dataset(test_dataset, batch_size)
 
-    def compute_loss(x):
-        enc = encoder(x)
-        mean, logvar = tf.split(enc, num_or_size_splits=2, axis=1)
-        z = reparameterize(mean, logvar)
-        x_logit = decoder(z)
+        encoder = InferenceNet(latent_dim)
+        decoder = GenerativeNet(latent_dim)
 
-        cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=x_logit, labels=x)
-        logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
-        logpz = log_normal_pdf(z, 0.0, 0.0)
-        logqz_x = log_normal_pdf(z, mean, logvar)
-        return -tf.reduce_mean(logpx_z + logpz - logqz_x)
+        def compute_loss(x):
+            enc = encoder(x)
+            mean, logvar = tf.split(enc, num_or_size_splits=2, axis=1)
+            z = reparameterize(mean, logvar)
+            x_logit = decoder(z)
 
-    def reparameterize(mean, logvar):
-        eps = tf.random.normal(shape=mean.shape)
-        return eps * tf.exp(logvar * 0.5) + mean
+            cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=x_logit, labels=x)
+            logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
+            logpz = log_normal_pdf(z, 0.0, 0.0)
+            logqz_x = log_normal_pdf(z, mean, logvar)
+            return -tf.reduce_mean(logpx_z + logpz - logqz_x)
 
-    def log_normal_pdf(sample, mean, logvar, raxis=1):
-        log2pi = tf.math.log(2.0 * np.pi)
-        return tf.reduce_sum(
-            -0.5 * ((sample - mean)**2.0 * tf.exp(-logvar) + logvar + log2pi),
-            axis=raxis)
+        def reparameterize(mean, logvar):
+            eps = tf.random.normal(shape=mean.shape)
+            return eps * tf.exp(logvar * 0.5) + mean
 
-    def compute_gradients(x):
-        with tf.GradientTape() as tape:
-            loss = compute_loss(x)
-        return tape.gradient(
-            loss,
-            encoder.trainable_variables + decoder.trainable_variables), loss
+        def log_normal_pdf(sample, mean, logvar, raxis=1):
+            log2pi = tf.math.log(2.0 * np.pi)
+            return tf.reduce_sum(
+                -0.5 * (
+                    (sample - mean)**2.0 * tf.exp(-logvar) + logvar + log2pi),
+                axis=raxis)
 
-    def apply_gradients(optimizer, gradients, variables):
-        optimizer.apply_gradients(zip(gradients, variables))
+        def compute_gradients(x):
+            with tf.GradientTape() as tape:
+                loss = compute_loss(x)
+            return tape.gradient(
+                loss, encoder.trainable_variables +
+                decoder.trainable_variables), loss
 
-    optimizer = tf.keras.optimizers.Adam(1e-4)
+        def apply_gradients(optimizer, gradients, variables):
+            optimizer.apply_gradients(zip(gradients, variables))
 
-    for epoch in range(1, epochs + 1):
-        for train_x in train_dataset:
-            gradients, loss = compute_gradients(train_x)
-            apply_gradients(
-                optimizer, gradients,
-                encoder.trainable_variables + decoder.trainable_variables)
+        optimizer = tf.keras.optimizers.Adam(1e-4)
 
-        loss = tf.keras.metrics.Mean()
-        for test_x in test_dataset:
-            loss(compute_loss(test_x))
-        elbo = -loss.result()
-        print("Epoch %d, Test ELBO: %f" % (epoch, elbo))
+        for epoch in range(1, epochs + 1):
+            tf.summary.experimental.set_step(epoch)
 
-    return encoder, decoder
+            for train_x in train_dataset:
+                gradients, loss = compute_gradients(train_x)
+                apply_gradients(
+                    optimizer, gradients,
+                    encoder.trainable_variables + decoder.trainable_variables)
+
+            loss = tf.keras.metrics.Mean()
+            for test_x in test_dataset:
+                loss(compute_loss(test_x))
+            elbo = -loss.result()
+            print("Epoch %d, Test ELBO: %f" % (epoch, elbo))
+
+            tf.summary.scalar("Test ELBO", elbo)
+
+        return encoder, decoder
 
 
 def main(_):
     FLAGS = flags.FLAGS
-    train(FLAGS.latent_dim, FLAGS.batch_size, FLAGS.epochs)
+    encoder, decoder = train(FLAGS.latent_dim, FLAGS.batch_size, FLAGS.epochs,
+                             FLAGS.model_dir)
 
 
 if __name__ == "__main__":
