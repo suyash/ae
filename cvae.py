@@ -31,6 +31,7 @@ def create_inference_net(latent_dim):
 def create_generative_net(latent_dim):
     inp = Input((latent_dim, ))
     net = Dense(7 * 7 * 32)(inp)
+    net = Reshape((7, 7, 32))(net)
     net = Conv2DTranspose(
         filters=64,
         kernel_size=3,
