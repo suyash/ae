@@ -24,7 +24,7 @@ class InferenceNet(Model):
             filters=32, kernel_size=3, strides=(2, 2), activation="relu")
         self.conv2 = Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation="relu")
-        self.dense = Dense(latent_dim + latent_dim, activation="None")
+        self.dense = Dense(latent_dim + latent_dim, activation=None)
 
     def call(self, inp):
         net = self.conv1(inp)
@@ -67,27 +67,25 @@ class GenerativeNet(Model):
         return net
 
 
+def process_dataset(dataset, batch_size):
+    dataset = dataset.map(lambda f: f["image"])
+    dataset = dataset.map(lambda f: tf.cast(f, tf.float32) / 255.0)
+    dataset = dataset.map(lambda f: tf.cast(
+        tf.greater_equal(f, 0.5), tf.float32))
+    dataset = dataset.batch(batch_size)
+    return dataset
+
+
 def train(latent_dim, batch_size, epochs):
     """
     NOTE: from https://www.tensorflow.org/alpha/guide/keras/saving_and_serializing, 
-    saving a 2.0 model is just not recommended on 2.0
-
-    Hence, again, a non-subclassing branch
+    saving a imperative model is not recommended on 2.0. For creating a saved_model, "non-subclassing" branch.
     """
     train_dataset, test_dataset = tfds.load(
         "mnist", split=[tfds.Split.TRAIN, tfds.Split.TEST])
 
-    train_dataset = train_dataset.map(lambda f: f["image"])
-    train_dataset = train_dataset.map(lambda f: tf.cast(f, tf.float32) / 255.0)
-    train_dataset = train_dataset.map(lambda f: tf.cast(
-        tf.greater_equal(f, 0.5), tf.float32))
-    train_dataset = train_dataset.batch(batch_size)
-
-    test_dataset = test_dataset.map(lambda f: f["image"])
-    test_dataset = test_dataset.map(lambda f: tf.cast(f, tf.float32) / 255.0)
-    test_dataset = test_dataset.map(lambda f: tf.cast(
-        tf.greater_equal(f, 0.5), tf.float32))
-    test_dataset = test_dataset.batch(batch_size)
+    train_dataset = process_dataset(train_dataset, batch_size)
+    test_dataset = process_dataset(test_dataset, batch_size)
 
     encoder = InferenceNet(latent_dim)
     decoder = GenerativeNet(latent_dim)
