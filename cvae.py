@@ -17,55 +17,39 @@ app.flags.DEFINE_integer("epochs", 50, "epochs")
 app.flags.DEFINE_string("model_dir", "models/cvae", "model dir")
 
 
-class InferenceNet(Model):
-    def __init__(self, latent_dim, **kwargs):
-        super(InferenceNet, self).__init__(**kwargs)
-
-        self.conv1 = Conv2D(
-            filters=32, kernel_size=3, strides=(2, 2), activation="relu")
-        self.conv2 = Conv2D(
-            filters=64, kernel_size=3, strides=(2, 2), activation="relu")
-        self.dense = Dense(latent_dim + latent_dim, activation=None)
-
-    def call(self, inp):
-        net = self.conv1(inp)
-        net = self.conv2(net)
-        net = Flatten()(net)
-        net = self.dense(net)
-        return net
+def create_inference_net(latent_dim):
+    inp = Input((28, 28, 1))
+    net = Conv2D(
+        filters=32, kernel_size=3, strides=(2, 2), activation="relu")(inp)
+    net = Conv2D(
+        filters=64, kernel_size=3, strides=(2, 2), activation="relu")(net)
+    net = Flatten()(net)
+    net = Dense(latent_dim + latent_dim, activation=None)(net)
+    return Model(inp, net)
 
 
-class GenerativeNet(Model):
-    def __init__(self, latent_dim, **kwargs):
-        super(GenerativeNet, self).__init__(**kwargs)
-
-        self.dense = Dense(7 * 7 * 32)
-        self.convt1 = Conv2DTranspose(
-            filters=64,
-            kernel_size=3,
-            strides=(2, 2),
-            padding="SAME",
-            activation="relu")
-        self.convt2 = Conv2DTranspose(
-            filters=32,
-            kernel_size=3,
-            strides=(2, 2),
-            padding="SAME",
-            activation="relu")
-        self.convt3 = Conv2DTranspose(
-            filters=1,
-            kernel_size=3,
-            strides=(1, 1),
-            padding="SAME",
-            activation=None)
-
-    def call(self, inp):
-        net = self.dense(inp)
-        net = Reshape((7, 7, 32))(net)
-        net = self.convt1(net)
-        net = self.convt2(net)
-        net = self.convt3(net)
-        return net
+def create_generative_net(latent_dim):
+    inp = Input((latent_dim, ))
+    net = Dense(7 * 7 * 32)(inp)
+    net = Conv2DTranspose(
+        filters=64,
+        kernel_size=3,
+        strides=(2, 2),
+        padding="SAME",
+        activation="relu")(net)
+    net = Conv2DTranspose(
+        filters=32,
+        kernel_size=3,
+        strides=(2, 2),
+        padding="SAME",
+        activation="relu")(net)
+    net = Conv2DTranspose(
+        filters=1,
+        kernel_size=3,
+        strides=(1, 1),
+        padding="SAME",
+        activation=None)(net)
+    return Model(inp, net)
 
 
 @tf.function
@@ -140,8 +124,8 @@ def train(latent_dim, batch_size, epochs, model_dir):
         train_dataset = process_dataset(train_dataset, batch_size)
         test_dataset = process_dataset(test_dataset, batch_size)
 
-        encoder = InferenceNet(latent_dim)
-        decoder = GenerativeNet(latent_dim)
+        encoder = create_inference_net(latent_dim)
+        decoder = create_generative_net(latent_dim)
 
         optimizer = tf.keras.optimizers.Adam(1e-4)
 
