@@ -151,10 +151,10 @@ def main(_):
     encoder, decoder = train(FLAGS.latent_dim, FLAGS.batch_size, FLAGS.epochs,
                              FLAGS.model_dir)
 
-    # tf.keras.experimental.export_saved_model(
-    #     encoder, "%s/export/encoder" % FLAGS.model_dir, serving_only=True)
-    # tf.keras.experimental.export_saved_model(
-    #     decoder, "%s/export/decoder" % FLAGS.model_dir, serving_only=True)
+    tf.keras.experimental.export_saved_model(
+        encoder, "%s/export/encoder" % FLAGS.model_dir, serving_only=True)
+    tf.keras.experimental.export_saved_model(
+        decoder, "%s/export/decoder" % FLAGS.model_dir, serving_only=True)
 
 
 if __name__ == "__main__":
