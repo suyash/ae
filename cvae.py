@@ -148,7 +148,7 @@ def train(latent_dim, batch_size, epochs, model_dir):
         for epoch in range(1, epochs + 1):
             for i, train_x in enumerate(train_dataset):
                 loss_value = train_step(train_x, encoder, decoder, optimizer)
-                tf.summary.scalar("Train ELBO", -loss_value, step=i)
+                tf.summary.scalar("Train ELBO", -loss_value, step=epoch * (60000 // batch_size) + i)
 
             loss = tf.keras.metrics.Mean()
             for test_x in test_dataset:
